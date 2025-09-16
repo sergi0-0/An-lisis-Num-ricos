@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Newton — Interactivo: Propagación de error</title>
+  <style>
+    :root{--bg:#0f1724;--card:#f8fafc;--muted:#475569;--accent:#0ea5a4}
+    body{font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial; margin:18px; color:#0b1220}
+    h1{font-size:20px;margin:0 0 6px}
+    p.lead{margin:0 0 12px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1fr 380px;gap:18px}
+    .card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(10,20,40,0.06)}
+    label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
+    input[type='number'], input[type='time']{width:100%;padding:8px;border-radius:8px;border:1px solid #e6eef8;margin-top:6px}
+    .row{display:flex;gap:8px}
+    button{background:var(--accent);color:#fff;border:none;padding:10px 12px;border-radius:10px;cursor:pointer}
+    pre{background:#0b1220;color:#e6eef8;padding:10px;border-radius:8px;overflow:auto}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    td,th{padding:8px;border-bottom:1px solid #eef2f7;text-align:left}
+    .small{font-size:13px;color:var(--muted)}
+    .muted{color:var(--muted)}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <h1>Newton — Interactivo: cálculo y propagación de error</h1>
+  <p class="lead">Introduce las temperaturas y la incertidumbre para ver instantáneamente la estimación del tiempo de muerte y su incertidumbre (propagación y "worst-case").</p>
+
+  <div class="grid">
+    <div class="card">
+      <div>
+        <label>T<sub>0</sub> — Temperatura normal del cuerpo (°F)</label>
+        <input id="T0" type="number" step="0.1" value="98.6">
+
+        <label>T<sub>s</sub> — Temperatura ambiente (°F)</label>
+        <input id="Ts" type="number" step="0.1" value="69">
+
+        <label>T<sub>1</sub> — Temperatura medida 1 (°F)</label>
+        <input id="T1" type="number" step="0.1" value="79.5">
+
+        <label>Hora de la medida 1</label>
+        <input id="time1" type="time" value="21:18">
+
+        <label>T<sub>2</sub> — Temperatura medida 2 (°F)</label>
+        <input id="T2" type="number" step="0.1" value="78.0">
+
+        <label>Hora de la medida 2</label>
+        <input id="time2" type="time" value="22:18">
+
+        <label>σ — Incertidumbre (desviación estándar) en las mediciones (°F)</label>
+        <input id="sigma" type="number" step="0.01" value="0.10">
+
+        <label>Opciones</label>
+        <div class="controls">
+          <button id="calcBtn">Calcular</button>
+          <button id="downloadBtn">Descargar HTML</button>
+          <button id="resetBtn">Restablecer valores</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Resultados</h3>
+      <div id="results">
+        <p class="small">Pulsa <strong>Calcular</strong> para ver los resultados.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function parseTime(t){ if(!t) return null; const [hh,mm]=t.split(':').map(Number); return hh + mm/60; }
+    function toHHMM(hours){const sign = hours<0?'-':''; hours = Math.abs(hours); const h = Math.floor(hours); const m = Math.round((hours-h)*60); return sign + h + ' h ' + (m<10?('0'+m):m) + ' min'; }
+
+    function calcAll(){
+      const T0 = parseFloat(document.getElementById('T0').value);
+      const Ts = parseFloat(document.getElementById('Ts').value);
+      const T1 = parseFloat(document.getElementById('T1').value);
+      const T2 = parseFloat(document.getElementById('T2').value);
+      const sigma = parseFloat(document.getElementById('sigma').value);
+      const time1Str = document.getElementById('time1').value;
+      const time2Str = document.getElementById('time2').value;
+
+      const resultsDiv = document.getElementById('results');
+      // Basic validation
+      if([T0,Ts,T1,T2,sigma].some(x => isNaN(x))){ resultsDiv.innerHTML = '<p class="small">Introduce valores válidos.</p>'; return; }
+
+      const A = T1 - Ts;
+      const B = T2 - Ts;
+      const C = T0 - Ts;
+
+      if(A<=0 || B<=0 || C<=0){ resultsDiv.innerHTML = '<p class="small">A, B, C deben ser positivos (revisa las temperaturas).</p>'; return; }
+
+      const k = Math.log(A) - Math.log(B);
+      const t1 = - (1/k) * Math.log(A/C); // horas desde muerte hasta time1
+
+      // Propagacion analítica (derivadas)
+      const f = Math.log(A/C);
+      const dk_dA = 1/A;
+      const dk_dB = -1/B;
+      // partials for t1
+      // from symbolic in previous conversation:
+      // dt/dA = - (k - f) / (A * k^2)
+      // dt/dB = - f / (B * k^2)
+      const dt_dA = - (k - f) / (A * k * k);
+      const dt_dB = - (f) / (B * k * k);
+      const sigmaA = sigma;
+      const sigmaB = sigma;
+      const sigma_t1 = Math.sqrt((dt_dA*sigmaA)**2 + (dt_dB*sigmaB)**2);
+
+      // worst-case bounds (corners)
+      const combos = [ [A - sigma, B - sigma], [A - sigma, B + sigma], [A + sigma, B - sigma], [A + sigma, B + sigma] ];
+      const tvals = combos.map(([Ai, Bi]) => {
+        if(Ai<=0 || Bi<=0) return NaN;
+        const ki = Math.log(Ai) - Math.log(Bi);
+        return - (1/ki) * Math.log(Ai/C);
+      }).filter(x => !isNaN(x));
+      const tmin = Math.min(...tvals);
+      const tmax = Math.max(...tvals);
+
+      // 95% CI approx
+      const t1_95_lo = t1 - 1.96 * sigma_t1;
+      const t1_95_hi = t1 + 1.96 * sigma_t1;
+
+      // Convert time1Str to decimal hours for clock arithmetic
+      const time1Dec = parseTime(time1Str);
+      const deathNominalDec = time1Dec - t1;
+      const deathLoDec = time1Dec - (t1 + sigma_t1);
+      const deathHiDec = time1Dec - (t1 - sigma_t1);
+
+      function fmtClock(dec){ if(dec==null || isNaN(dec)) return '—'; let d = dec; while(d<0) d+=24; while(d>=24) d-=24; const hh = Math.floor(d); const mm = Math.round((d - hh)*60); return String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0'); }
+
+      resultsDiv.innerHTML = `
+        <table>
+          <tr><th>Concepto</th><th>Valor</th></tr>
+          <tr><td>A = T1 - Ts</td><td>${A.toFixed(3)} °F</td></tr>
+          <tr><td>B = T2 - Ts</td><td>${B.toFixed(3)} °F</td></tr>
+          <tr><td>C = T0 - Ts</td><td>${C.toFixed(3)} °F</td></tr>
+          <tr><td>k (constante)</td><td>${k.toFixed(6)} h⁻¹</td></tr>
+          <tr><td>t₁ (horas desde la muerte hasta la medida 1)</td><td>${t1.toFixed(6)} h (${toHHMM(t1)})</td></tr>
+          <tr><td>Propagación (σ<sub>T</sub> = ${sigma} °F)</td><td>σₜ₁ = ${sigma_t1.toFixed(4)} h (${Math.round(sigma_t1*60)} min)</td></tr>
+          <tr><td>Intervalo 1σ</td><td>${(t1 - sigma_t1).toFixed(3)} h — ${(t1 + sigma_t1).toFixed(3)} h</td></tr>
+          <tr><td>Intervalo 95% aprox</td><td>${t1_95_lo.toFixed(3)} h — ${t1_95_hi.toFixed(3)} h</td></tr>
+          <tr><td>Worst-case (corners)</td><td>tₘᵢₙ = ${tmin.toFixed(3)} h, tₘₐₓ = ${tmax.toFixed(3)} h</td></tr>
+          <tr><td>Hora medida 1</td><td>${time1Str}</td></tr>
+          <tr><td>Hora estimada de la muerte (nominal)</td><td>${fmtClock(deathNominalDec)} (≈ ${toHHMM(t1)} antes de ${time1Str})</td></tr>
+          <tr><td>Hora estimada de la muerte (1σ)</td><td>Desde ${fmtClock(deathLoDec)} hasta ${fmtClock(deathHiDec)}</td></tr>
+        </table>
+
+        <p class="small">Derivadas usadas en la propagación: ∂t₁/∂A = ${dt_dA.toFixed(4)} h/°F, ∂t₁/∂B = ${dt_dB.toFixed(4)} h/°F</p>
+      `;
+
+    }
+
+    document.getElementById('calcBtn').addEventListener('click', calcAll);
+    document.getElementById('resetBtn').addEventListener('click', ()=>{
+      document.getElementById('T0').value='98.6';
+      document.getElementById('Ts').value='69';
+      document.getElementById('T1').value='79.5';
+      document.getElementById('T2').value='78.0';
+      document.getElementById('time1').value='21:18';
+      document.getElementById('time2').value='22:18';
+      document.getElementById('sigma').value='0.10';
+      calcAll();
+    });
+
+    document.getElementById('downloadBtn').addEventListener('click', function(e){
+      e.preventDefault();
+      const doc = '<!doctype html>\n' + document.documentElement.outerHTML;
+      const blob = new Blob([doc], {type: 'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Newton_enfriamiento_interactivo.html';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    // calculate once on load
+    calcAll();
+  </script>
+</body>
+</html>

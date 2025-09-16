@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Estimación de edad por Carbono-14 con error</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width:950px; margin:26px auto; color:#222; line-height:1.45; }
+  h1 { text-align:center; margin-bottom:6px; }
+  .card { background:#fff; border-radius:10px; box-shadow:0 6px 18px rgba(20,20,40,0.06); padding:18px; margin:14px 0; }
+  label { display:inline-block; margin:6px 10px 6px 0; }
+  input[type="number"] { padding:6px 8px; border-radius:6px; border:1px solid #cfcfcf; width:150px; }
+  .btn { background:#0b69ff; color:white; border:none; padding:8px 12px; border-radius:8px; cursor:pointer; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; }
+  th, td { text-align:left; padding:10px 8px; border-bottom:1px solid #eee; vertical-align:top; }
+  th { background:#f4f8ff; font-weight:700; }
+  .mono { font-family: SFMono-Regular, Menlo, Monaco, monospace; background:#f7f9fc; padding:6px 8px; border-radius:6px; display:inline-block; }
+  .warn { color:#b33; font-weight:700; }
+  .center { text-align:center; }
+  footer { font-size:0.9rem; color:#666; margin-top:12px; }
+  .small { font-size:0.9rem; color:#555; }
+</style>
+</head>
+<body>
+  <h1>Estimación de edad por Carbono-14 — con error</h1>
+
+  <div class="card">
+    <h2>1) Datos / Inputs</h2>
+    <p class="small">Ajusta los valores y pulsa <strong>Calcular</strong>.</p>
+
+    <div>
+      <label>Vida media (años)<br><input id="half" type="number" value="5730" step="1"></label>
+      <label>Fracción medida f(t)/f(0)<br><input id="frac" type="number" value="0.7745" step="0.0001" min="0.0001"></label>
+      <label>Error en la fracción (±)<br><input id="err" type="number" value="0.1" step="0.001" min="0"></label>
+      <button class="btn" onclick="calcular()">Calcular</button>
+    </div>
+
+    <div id="validation" style="margin-top:10px;"></div>
+
+    <table aria-label="Datos">
+      <thead><tr><th>Descripción</th><th>Valor</th></tr></thead>
+      <tbody>
+        <tr><td>Vida media (t<sub>1/2</sub>)</td><td id="show_half" class="mono">5730</td></tr>
+        <tr><td>Fracción medida</td><td id="show_frac" class="mono">0.7745</td></tr>
+        <tr><td>Error en fracción (±)</td><td id="show_err" class="mono">0.1</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>2) Constante de decaimiento</h2>
+    <p>Usamos <span class="mono">k = ln(0.5) / t<sub>1/2</sub></span></p>
+    <table>
+      <thead><tr><th>Valor</th><th>Resultado</th></tr></thead>
+      <tbody>
+        <tr><td>Constante k</td><td id="k_val" class="mono">-0.000120968</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>3) Cálculo de la edad</h2>
+    <p>La fórmula: <span class="mono">t = ln(f) / k</span></p>
+    <table>
+      <thead><tr><th>Caso</th><th>Fracción usada</th><th>Edad (años)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Central (valor medido)</td>
+          <td id="case_c_frac" class="mono">0.7745</td>
+          <td id="case_c_t" class="mono">2115.402...</td>
+        </tr>
+        <tr>
+          <td>Fracción mínima (f - Δf)</td>
+          <td id="case_min_frac" class="mono">0.6745</td>
+          <td id="case_min_t" class="mono">3247.XXX</td>
+        </tr>
+        <tr>
+          <td>Fracción máxima (f + Δf)</td>
+          <td id="case_max_frac" class="mono">0.8745</td>
+          <td id="case_max_t" class="mono">1112.XXX</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="small">Nota: si <em>f - Δf ≤ 0</em> el cálculo no es físicamente válido — ajusta la fracción o reduce el error.</p>
+  </div>
+
+  <div class="card">
+    <h2>4) Resultado con propagación del error</h2>
+    <table>
+      <thead><tr><th>Resultado</th><th>Valor</th></tr></thead>
+      <tbody>
+        <tr><td>Edad central (t)</td><td id="res_t" class="mono">2115 años</td></tr>
+        <tr><td>Error negativo (t − t<sub>max</sub>)</td><td id="res_err_minus" class="mono">1003 años</td></tr>
+        <tr><td>Error positivo (t<sub>min</sub> − t)</td><td id="res_err_plus" class="mono">1132 años</td></tr>
+        <tr><td>Error simétrico (max)</td><td id="res_err_sym" class="mono">±1132 años</td></tr>
+        <tr><td>Rango de edades</td><td id="res_range" class="mono">[1112 , 3247] años</td></tr>
+      </tbody>
+    </table>
+
+    <p class="small">Interpretación: la incertidumbre es asimétrica. Puedes presentar la edad como <strong>t = 2115 (+1132, −1003) años</strong> o usar el error simétrico conservador <strong>t = 2115 ± 1132 años</strong>.</p>
+  </div>
+
+  <footer class="center small">
+    Generado dinámicamente — fórmula usada: <span class="mono">k = ln(0.5)/t1/2</span>, <span class="mono">t = ln(f)/k</span>.
+  </footer>
+
+<script>
+function calcular() {
+  const half = Number(document.getElementById('half').value) || 5730;
+  const frac = Number(document.getElementById('frac').value) || 0.7745;
+  const err = Number(document.getElementById('err').value) || 0.1;
+
+  const validationEl = document.getElementById('validation');
+  validationEl.innerHTML = "";
+
+  // Mostrar inputs
+  document.getElementById('show_half').innerText = half;
+  document.getElementById('show_frac').innerText = frac;
+  document.getElementById('show_err').innerText = err;
+
+  // Validación
+  if (half <= 0) {
+    validationEl.innerHTML = '<p class="warn">Error: la vida media debe ser > 0.</p>';
+    return;
+  }
+  if (frac <= 0) {
+    validationEl.innerHTML = '<p class="warn">Error: la fracción debe ser > 0.</p>';
+    return;
+  }
+  if (err < 0) {
+    validationEl.innerHTML = '<p class="warn">Error: el error debe ser ≥ 0.</p>';
+    return;
+  }
+
+  const f_min = frac - err;
+  const f_max = frac + err;
+
+  if (f_min <= 0) {
+    validationEl.innerHTML = '<p class="warn">Atención: f - Δf ≤ 0 — el valor mínimo no es válido. Ajusta la fracción o reduce el error.</p>';
+    // seguimos calculando con f_min muy pequeño positivo para evitar NaN, pero marcamos la advertencia
+  }
+
+  const k = Math.log(0.5) / half;
+
+  // Para evitar log(<=0), fijar un límite mínimo muy pequeño para f_min si es ≤0
+  const safe_f_min = (f_min <= 0) ? 1e-12 : f_min;
+
+  const t_c = Math.log(frac) / k;
+  const t_min = Math.log(safe_f_min) / k;
+  const t_max = Math.log(f_max) / k;
+
+  // Errores (asymmetric)
+  const err_minus = Math.abs(t_c - t_max); // t - t_max
+  const err_plus = Math.abs(t_min - t_c);  // t_min - t
+  const err_sym = Math.max(err_minus, err_plus);
+
+  // Mostrar en la UI con formato
+  document.getElementById('k_val').innerText = k.toFixed(12);
+  document.getElementById('case_c_frac').innerText = frac;
+  document.getElementById('case_c_t').innerText = t_c.toFixed(3);
+  document.getElementById('case_min_frac').innerText = f_min.toFixed(6);
+  document.getElementById('case_min_t').innerText = (f_min <= 0) ? '—' : t_min.toFixed(3);
+  document.getElementById('case_max_frac').innerText = f_max.toFixed(6);
+  document.getElementById('case_max_t').innerText = t_max.toFixed(3);
+
+  document.getElementById('res_t').innerText = t_c.toFixed(3) + " años";
+  document.getElementById('res_err_minus').innerText = err_minus.toFixed(3) + " años";
+  document.getElementById('res_err_plus').innerText = err_plus.toFixed(3) + " años";
+  document.getElementById('res_err_sym').innerText = "±" + err_sym.toFixed(3) + " años";
+  document.getElementById('res_range').innerText = "[" + ( (f_max>0) ? t_max.toFixed(3) : '—' ) + " , " + ( (f_min>0) ? t_min.toFixed(3) : '—' ) + "] años";
+}
+
+// Ejecutar con valores por defecto al cargar
+calcular();
+</script>
+</body>
+</html>
