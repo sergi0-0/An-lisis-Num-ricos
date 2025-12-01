@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Métodos Numéricos — Resolver raíces (Bisección / Newton / Secante)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif; max-width:1000px; margin:20px auto;}
+  .row{display:flex; gap:10px; align-items:center; margin-bottom:6px;}
+  label{min-width:120px;}
+  textarea{width:100%;height:120px;}
+  #output{white-space:pre-wrap; background:#f3f3f3;padding:10px;border-radius:6px}
+</style>
+</head>
+<body>
+<h2>Métodos Numéricos — Resolver raíces</h2>
+
+<div class="row">
+  <label>Ecuación:</label>
+  <select id="preset">
+    <option value="preset1">1) x^3 - exp(0.8 x) - 20</option>
+    <option value="preset2">2) 3*sin(0.5 x) - 0.5 x + 2</option>
+    <option value="preset3">3) x^3 - x^2*exp(-0.5 x) - 3 x + 1</option>
+    <option value="preset4">4) cos(x)^2 - 0.5 x exp(0.3 x) + 5</option>
+    <option value="custom">Ecuación personalizada</option>
+  </select>
+</div>
+
+<div class="row">
+  <label>Expresión f(x):</label>
+  <input id="expr" style="flex:1" value="x^3 - exp(0.8*x) - 20">
+</div>
+
+<div class="row">
+  <label>Método:</label>
+  <select id="method"><option value="biseccion">Bisección</option><option value="newton">Newton-Raphson</option><option value="secante">Secante</option></select>
+</div>
+
+<div class="row">
+  <label>Parámetros:</label>
+  <input id="a" placeholder="a" size="6" value="0"> 
+  <input id="b" placeholder="b / x0" size="6" value="8">
+  <input id="tol" placeholder="tol" size="8" value="1e-8">
+  <input id="maxit" placeholder="maxIter" size="6" value="200">
+  <button id="run">Ejecutar</button>
+  <button id="download">Descargar CSV</button>
+</div>
+
+<h3>Salida</h3>
+<div id="output">Resultados aparecerán aquí.</div>
+
+<h3>Gráfico</h3>
+<canvas id="chart" height="200"></canvas>
+
+<script>
+// Presets
+const presets = {
+  preset1: "x^3 - exp(0.8*x) - 20",
+  preset2: "3*sin(0.5*x) - 0.5*x + 2",
+  preset3: "x^3 - x^2*exp(-0.5*x) - 3*x + 1",
+  preset4: "cos(x)^2 - 0.5*x*exp(0.3*x) + 5"
+};
+document.getElementById('preset').addEventListener('change', (e)=>{
+  const v = e.target.value;
+  if(v==='custom') return;
+  document.getElementById('expr').value = presets[v];
+});
+
+// Parser
+function compileFunc(expr){
+  const node = math.parse(expr);
+  const f = node.compile();
+  return function(x){ return f.evaluate({x:x}); };
+}
+function compileDf(expr){
+  try{
+    const dexpr = math.derivative(expr, 'x').toString();
+    const node = math.parse(dexpr);
+    const df = node.compile();
+    return {df_func: (x)=>df.evaluate({x:x}), df_expr: dexpr};
+  }catch(e){ return null; }
+}
+
+// Métodos
+function bisection(f,a,b,tol,maxit){
+  let fa=f(a), fb=f(b);
+  if(fa*fb>0) throw "f(a) y f(b) deben tener signos opuestos.";
+  let rows=[], prev=null;
+  for(let k=1;k<=maxit;k++){
+    let c=(a+b)/2;
+    let fc=f(c);
+    let err = prev===null? null : Math.abs(c-prev);
+    rows.push({iter:k,a:a,b:b,c:c,fa:fa,fb:fb,fc:fc,err: err===null?0:err});
+    if(Math.abs(fc)<tol || (err!==null && err<tol)) break;
+    if(fa*fc<0){ b=c; fb=fc; } else { a=c; fa=fc; }
+    prev=c;
+  }
+  return rows;
+}
+function newton(f, df, x0, tol, maxit){
+  let rows = [];
+  let x = x0;
+  for(let k=1;k<=maxit;k++){
+    let fx = f(x);
+    let dfx = df(x);
+    if(Math.abs(dfx) < 1e-14) throw "Derivada casi cero";
+    let xnext = x - fx/dfx;
+    let err = Math.abs(xnext - x);
+    rows.push({iter:k,x:x,fx:fx,dfx:dfx,xnext:xnext,err:err});
+    x = xnext;
+    if(Math.abs(fx)<tol || err<tol) break;
+  }
+  return rows;
+}
+function secant(f, x0, x1, tol, maxit){
+  let rows=[]; let xprev=x0, x=x1, fxprev=f(xprev), fx=f(x);
+  for(let k=1;k<=maxit;k++){
+    let denom = fx - fxprev;
+    if(Math.abs(denom) < 1e-14) throw "Denominador pequeño en Secante";
+    let xnext = x - fx*(x - xprev)/denom;
+    let err = Math.abs(xnext - x);
+    rows.push({iter:k,xprev:xprev,x:x,fxprev:fxprev,fx:fx,xnext:xnext,err:err});
+    xprev = x; fxprev = fx; x = xnext; fx = f(x);
+    if(Math.abs(fx)<tol || err<tol) break;
+  }
+  return rows;
+}
+
+// Interfaz y graficación
+let chart = new Chart(document.getElementById('chart'), {
+  type: 'line',
+  data: { labels: [], datasets: [{label:'f(x)', data: [], fill:false}] },
+  options: { animation:false, responsive:true, scales:{x:{type:'linear',position:'bottom'}} }
+});
+
+document.getElementById('run').addEventListener('click', ()=>{
+  const expr = document.getElementById('expr').value;
+  const method = document.getElementById('method').value;
+  const a = parseFloat(document.getElementById('a').value);
+  const b = parseFloat(document.getElementById('b').value);
+  const tol = parseFloat(document.getElementById('tol').value);
+  const maxit = parseInt(document.getElementById('maxit').value, 10);
+  const out = document.getElementById('output');
+
+  try{
+    const f = compileFunc(expr);
+    const dobj = compileDf(expr);
+    let rows = [];
+    if(method === 'biseccion'){
+      rows = bisection(f, a, b, tol, maxit);
+      out.textContent = rows.map(r=>`it ${r.iter}: c=${r.c.toFixed(12)}, f(c)=${r.fc.toExponential(3)}`).join("\n");
+    } else if(method === 'newton'){
+      if(!dobj) throw "No se pudo derivar la expresión.";
+      rows = newton(f, dobj.df_func, a, tol, maxit);
+      out.textContent = rows.map(r=>`it ${r.iter}: xnext=${r.xnext.toFixed(12)}, f(x)=${f(r.xnext).toExponential(3)}`).join("\n");
+    } else {
+      rows = secant(f, a, b, tol, maxit);
+      out.textContent = rows.map(r=>`it ${r.iter}: xnext=${r.xnext.toFixed(12)}, f(x)=${f(r.xnext).toExponential(3)}`).join("\n");
+    }
+
+    // Graficar
+    const xmin = a - (Math.abs(b-a)+1)*0.1, xmax = b + (Math.abs(b-a)+1)*0.1;
+    const samples = 400;
+    let dataX = [], dataY = [];
+    for(let i=0;i<samples;i++){
+      let x = xmin + (xmax - xmin)*i/(samples-1);
+      dataX.push(x); dataY.push(f(x));
+    }
+    chart.data.labels = dataX;
+    chart.data.datasets = [{label:'f(x)', data: dataX.map((x,i)=>({x:x,y:dataY[i]})), showLine:true}];
+    // añadir iteraciones como dataset
+    let iterPts = [];
+    if(method==='biseccion') iterPts = rows.map(r=>({x:r.c, y:0}));
+    if(method==='newton') iterPts = rows.map(r=>({x:r.xnext, y:0}));
+    if(method==='secante') iterPts = rows.map(r=>({x:r.xnext, y:0}));
+    if(iterPts.length){
+      chart.data.datasets.push({label:'Iteraciones', data: iterPts, pointRadius:4, showLine:false, backgroundColor:'red'});
+    }
+    chart.update();
+    // guardar rows para descargar
+    window._lastRows = rows;
+    window._lastMethod = method;
+    window._lastExpr = expr;
+    out.scrollIntoView();
+  }catch(e){
+    document.getElementById('output').textContent = "Error: " + e;
+  }
+});
+
+// Descargar CSV
+document.getElementById('download').addEventListener('click', ()=>{
+  if(!window._lastRows){ alert("Ejecuta primero"); return; }
+  let csv = "";
+  const method = window._lastMethod;
+  if(method==='biseccion'){
+    csv += "iter,a,b,c,f(a),f(b),f(c),error\n";
+    window._lastRows.forEach(r => { csv += `${r.iter},${r.a},${r.b},${r.c},${r.fa},${r.fb},${r.fc},${r.err}\n`; });
+  } else if(method==='newton'){
+    csv += "iter,x,fx,dfx,xnext,error\n";
+    window._lastRows.forEach(r => { csv += `${r.iter},${r.x},${r.fx},${r.dfx},${r.xnext},${r.err}\n`; });
+  } else {
+    csv += "iter,xprev,x,fxprev,fx,xnext,error\n";
+    window._lastRows.forEach(r => { csv += `${r.iter},${r.xprev},${r.x},${r.fxprev},${r.fx},${r.xnext},${r.err}\n`; });
+  }
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'corrida.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>

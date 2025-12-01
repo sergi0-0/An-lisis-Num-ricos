@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Resolución de Ecuaciones - Métodos Numéricos</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+</head>
+<body>
+
+<h2> Resolver ecuación con tres métodos numéricos </h2>
+
+<label>Ecuación f(x) = </label>
+<input type="text" id="funcion" value="x^3 - 4*x - 9" size="30"><br><br>
+
+<label>Punto inicial a: </label>
+<input type="number" id="a" value="2"><br><br>
+
+<label>Punto inicial b: </label>
+<input type="number" id="b" value="3"><br><br>
+
+<label>Tolerancia: </label>
+<input type="number" id="tol" value="0.0001" step="0.0001"><br><br>
+
+<button onclick="resolver()">Calcular</button>
+
+<h3>Resultados</h3>
+<pre id="resultado"></pre>
+
+<script>
+
+function evaluar(func, x) {
+    return math.evaluate(func, {x: x});
+}
+
+function biseccion(func, a, b, tol){
+    let fa = evaluar(func,a);
+    let fb = evaluar(func,b);
+
+    if (fa * fb > 0) return "Error: f(a) y f(b) tienen el mismo signo";
+
+    let c;
+    while (Math.abs(b-a) > tol){
+        c = (a+b)/2;
+        let fc = evaluar(func,c);
+        if (fa*fc < 0){
+            b = c;
+        } else {
+            a = c;
+            fa = fc;
+        }
+    }
+    return c;
+}
+
+function newton(func, x0, tol){
+    let x = x0;
+    while(true){
+        let fx = evaluar(func,x);
+        let dfx = math.derivative(func,'x').evaluate({x:x});
+        let x1 = x - fx/dfx;
+        if (Math.abs(x1-x) < tol) return x1;
+        x = x1;
+    }
+}
+
+function secante(func, x0, x1, tol){
+    while(true){
+        let fx0 = evaluar(func,x0);
+        let fx1 = evaluar(func,x1);
+        let x2 = x1 - fx1*(x1-x0)/(fx1-fx0);
+        if (Math.abs(x2-x1) < tol) return x2;
+        x0 = x1;
+        x1 = x2;
+    }
+}
+
+function resolver(){
+    let func = document.getElementById('funcion').value;
+    let a = parseFloat(document.getElementById('a').value);
+    let b = parseFloat(document.getElementById('b').value);
+    let tol = parseFloat(document.getElementById('tol').value);
+
+    let r1 = biseccion(func,a,b,tol);
+    let r2 = newton(func,a,tol);
+    let r3 = secante(func,a,b,tol);
+
+    document.getElementById('resultado').innerText = 
+    "Método de bisección:  " + r1 + "\n" +
+    "Método Newton-Raphson: " + r2 + "\n" +
+    "Método de secante:     " + r3;
+}
+
+</script>
+
+</body>
+</html>
